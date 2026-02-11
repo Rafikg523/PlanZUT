@@ -129,22 +129,27 @@ def resolve_tok_names_for_student(
     majors_count: int,
     monday: dt.date,
     weeks_limit: int,
+    backward_days_limit: int = 366,
 ) -> TokResolveResult:
     """
-    Pobiera harmonogram studenta oknami 7-dniowymi, dopoki nie zbierze majors_count unikatowych tok_name.
+    Pobiera harmonogram studenta oknami 7-dniowymi.
+    Najpierw idzie do przodu (od wskazanego monday) przez weeks_limit tygodni,
+    a jesli nadal brakuje tok_name, szuka wstecz do granicy backward_days_limit.
     """
     majors_count = int(majors_count)
     if majors_count <= 0:
         return TokResolveResult(tok_names=[], weeks_used=0)
 
+    weeks_used = 0
     seen: set[str] = set()
     tok_names: list[str] = []
 
-    for i in range(max(1, int(weeks_limit))):
-        w_monday = monday + dt.timedelta(days=7 * i)
+    def _collect_week(w_monday: dt.date) -> bool:
+        nonlocal weeks_used
         start_local, end_local = week_range_local(w_monday)
         start_api = local_iso_to_api_iso(start_local)
         end_api = local_iso_to_api_iso(end_local)
+        weeks_used += 1
 
         events = fetch_student_schedule(album_number, start_iso=start_api, end_iso=end_api)
         for ev in events:
@@ -157,9 +162,24 @@ def resolve_tok_names_for_student(
             seen.add(t)
             tok_names.append(t)
             if len(tok_names) >= majors_count:
-                return TokResolveResult(tok_names=tok_names, weeks_used=i + 1)
+                return True
+        return False
 
-    return TokResolveResult(tok_names=tok_names, weeks_used=max(1, int(weeks_limit)))
+    forward_weeks_limit = max(1, int(weeks_limit))
+    for i in range(forward_weeks_limit):
+        if _collect_week(monday + dt.timedelta(days=7 * i)):
+            return TokResolveResult(tok_names=tok_names, weeks_used=weeks_used)
+
+    backward_days_limit = max(0, int(backward_days_limit))
+    backward_weeks_limit = 0 if backward_days_limit == 0 else (backward_days_limit + 6) // 7
+    for i in range(1, backward_weeks_limit + 1):
+        w_monday = monday - dt.timedelta(days=7 * i)
+        if (monday - w_monday).days > backward_days_limit:
+            break
+        if _collect_week(w_monday):
+            return TokResolveResult(tok_names=tok_names, weeks_used=weeks_used)
+
+    return TokResolveResult(tok_names=tok_names, weeks_used=weeks_used)
 
 
 @dataclass(frozen=True)

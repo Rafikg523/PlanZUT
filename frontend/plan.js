@@ -20,6 +20,7 @@ const rangeEndEl = $("#rangeEnd");
 const maxWorkersEl = $("#maxWorkers");
 
 const btnPrevWeekEl = $("#btnPrevWeek");
+const btnTodayWeekEl = $("#btnTodayWeek");
 const btnNextWeekEl = $("#btnNextWeek");
 const btnLoadEl = $("#btnLoad");
 const btnRefreshEl = $("#btnRefresh");
@@ -650,6 +651,7 @@ function seedTimeColumn() {
 
 function disableUi(disabled, label = null) {
   btnPrevWeekEl.disabled = disabled;
+  btnTodayWeekEl.disabled = disabled;
   btnNextWeekEl.disabled = disabled;
   btnLoadEl.disabled = disabled;
   btnRefreshEl.disabled = disabled;
@@ -761,6 +763,16 @@ function bumpWeek(days) {
   setWeekHeaders(next);
 }
 
+function setWeekToToday() {
+  const today = new Date();
+  const todayYmd = parseYMD(formatYMDLocal(today));
+  if (!todayYmd) return null;
+  const mon = mondayFromYMD(todayYmd);
+  weekStartEl.value = utcDateToYMD(mon);
+  setWeekHeaders(mon);
+  return mon;
+}
+
 btnPrevWeekEl.addEventListener("click", async () => {
   try {
     bumpWeek(-7);
@@ -780,6 +792,23 @@ btnPrevWeekEl.addEventListener("click", async () => {
 btnNextWeekEl.addEventListener("click", async () => {
   try {
     bumpWeek(7);
+    toast("Ładowanie tygodnia...");
+    setStatus("loading week...");
+    disableUi(true, "week");
+    await loadWeek({ forceLessons: false });
+    toast("Tydzień załadowany");
+  } catch (e) {
+    setStatus(String(e));
+    toast(String(e));
+  } finally {
+    disableUi(false);
+  }
+});
+
+btnTodayWeekEl.addEventListener("click", async () => {
+  try {
+    const mon = setWeekToToday();
+    if (!mon) throw new Error("Nie udało się ustawić bieżącego tygodnia.");
     toast("Ładowanie tygodnia...");
     setStatus("loading week...");
     disableUi(true, "week");
@@ -910,13 +939,11 @@ async function importFiltersFromFile(file) {
 
 function boot() {
   seedTimeColumn();
-  const today = new Date();
-  const todayYmd = parseYMD(formatYMDLocal(today));
-  const mon = mondayFromYMD(todayYmd);
-  weekStartEl.value = utcDateToYMD(mon);
-  rangeStartEl.value = weekStartEl.value;
-  rangeEndEl.value = utcDateToYMD(addDaysUTC(mon, 6));
-  setWeekHeaders(mon);
+  const mon = setWeekToToday();
+  if (mon) {
+    rangeStartEl.value = weekStartEl.value;
+    rangeEndEl.value = utcDateToYMD(addDaysUTC(mon, 6));
+  }
   if (apiBaseEl) apiBaseEl.textContent = window.location.origin;
   setWorking(false, "idle");
   ensureHealth().catch(() => {});

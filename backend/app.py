@@ -164,10 +164,9 @@ def student_ensure(req: StudentEnsureRequest) -> dict:
     # Force lub brak kompletu w cache: odswiezamy.
     try:
         tok_monday = monday_for_week(req.range_start or req.week_start)
-        weeks_limit = min(
-            int(req.weeks_search_limit),
-            weeks_ceil_between_local(range_start_local, range_end_local),
-        )
+        # Najpierw przeszukujemy caly zaznaczony zakres (w tygodniach).
+        # Dodatkowy fallback "wstecz" do roku obsluguje resolve_tok_names_for_student.
+        weeks_limit = max(1, weeks_ceil_between_local(range_start_local, range_end_local))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     try:
@@ -176,6 +175,7 @@ def student_ensure(req: StudentEnsureRequest) -> dict:
             majors_count=majors_count,
             monday=tok_monday,
             weeks_limit=weeks_limit,
+            backward_days_limit=366,
         )
     except HTTPException:
         raise
@@ -186,9 +186,10 @@ def student_ensure(req: StudentEnsureRequest) -> dict:
         raise HTTPException(
             status_code=404,
             detail=(
-                "Nie udalo sie znalezc wymaganej liczby tok_name dla studenta w zadanym zakresie. "
+                "Nie udalo sie znalezc wymaganej liczby tok_name dla studenta "
+                "w zadanym zakresie ani przy szukaniu wstecz do ostatniego roku. "
                 f"Znalezione={len(tok_res.tok_names)} oczekiwane={majors_count}. "
-                "Sprobuj zwiekszyc weeks_search_limit albo ustawic inny week_start/range_start."
+                "Sprobuj ustawic inny week_start/range_start."
             ),
         )
 
