@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plan Zajęć (Bez Duplikatów)</title>
+    <script type="text/javascript"
+        src="https://ff.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=tz-UIuuo5x-xg09WM5g5d5g_QiUPHZepWcj7N2lNIsBuJBb3NPLWpKQLnY6I6pgGzpQYBXzob8XgagS_GsEmGiVJhTCadjh0FyVT6jZCwkNnSU3X5y-DjoxoGdAEvASAVs_vyEOi7qEZs1lIfiWXitJ4fabn5dkcf7JQJZxK_O-Lcy6LL4xdpfAh454XBxLL25dVVWXYmt8HRFijz6Bj3RPT6fPFtqrcv9aSxlDSMgqdetKvA_oU_dCVx8ghT9ayCUYXpwr4TP4yrxL6pRlvig"
+        charset="UTF-8"></script>
+    <link rel="stylesheet" crossorigin="anonymous"
+        href="https://ff.kis.v2.scr.kaspersky-labs.com/E3E8934C-235A-4B0E-825A-35A08381A191/abn/main.css?attr=aHR0cHM6Ly9jZG4uZGlzY29yZGFwcC5jb20vYXR0YWNobWVudHMvMTM4Mjc5NjU5NTUxNDMxNDg3Mi8xNDY3OTMyNzgxMjE5Njc2MjcyL3BsYW4uaHRtbD9leD02OTgyMmU2ZiZpcz02OTgwZGNlZiZobT0wYzU4MWUzNjIyZTgzZGFkYmYyNDY5YjQ0ODEzZjNkYTVjMTQxZDFiZGUzZDUzZjBiYWEwMjRhMjJiNTU5MTQzJg" />
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --hour-height: 60px;
+            --border-color: #ddd;
+            --default-event-bg: #4a90e2;
+            --sidebar-width: 280px;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            background-color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 20;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #333;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .calendar-wrapper {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            background: white;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 60px repeat(5, 1fr);
+            min-width: 800px;
+            position: relative;
+        }
+
+        .day-header {
+            background: #f8f9fa;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
+            border-bottom: 2px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 15;
+        }
+
+        .time-column {
+            background: #fff;
+            border-right: 2px solid var(--border-color);
+        }
+
+        .time-slot {
+            height: var(--hour-height);
+            border-bottom: 1px solid #eee;
+            color: #666;
+            font-size: 0.8rem;
+            text-align: right;
+            padding-right: 5px;
+            box-sizing: border-box;
+            position: relative;
+            top: -10px;
+        }
+
+        .day-column {
+            position: relative;
+            border-right: 1px solid var(--border-color);
+            background: repeating-linear-gradient(to bottom,
+                    transparent 0,
+                    transparent calc(var(--hour-height) - 1px),
+                    #eee calc(var(--hour-height) - 1px),
+                    #eee var(--hour-height));
+            height: calc(var(--hour-height) * 14);
+        }
+
+        /* Wygląd kafelka zajęć */
+        .event-block {
+            position: absolute;
+            box-sizing: border-box;
+            color: white;
+            padding: 3px 5px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            overflow: hidden;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.1s;
+            z-index: 10;
+            line-height: 1.15;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .event-block:hover {
+            transform: scale(1.02);
+            z-index: 50 !important;
+            filter: brightness(90%);
+        }
+
+        .event-title {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .event-details {
+            opacity: 0.95;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: auto;
+        }
+
+        .event-groups {
+            font-size: 0.65rem;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.15);
+            margin: 2px -5px -3px -5px;
+            /* Rozciągnięcie tła na boki */
+            padding: 2px 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: white;
+            border-left: 1px solid var(--border-color);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.05);
+            z-index: 20;
+        }
+
+        .sidebar h2 {
+            margin-top: 0;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+        }
+
+        .group-filter-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .group-item {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+
+        .group-item label {
+            margin-left: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        #tooltip {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            max-width: 300px;
+            line-height: 1.4;
+        }
+
+        #tooltip strong {
+            color: #ffd700;
+            display: block;
+            margin-bottom: 3px;
+        }
+
+        .controls {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .btn-small {
+            background: #eee;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+
+        .btn-small:hover {
+            background: #ddd;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Wizualizer Planu Zajęć (Deduplikacja)</h1>
+        <input type="file" id="csvFileInput" accept=".csv">
+    </header>
+
+    <div class="main-container">
+        <div class="calendar-wrapper">
+            <div class="calendar-grid" id="calendarGrid">
+                <div class="day-header" style="grid-column: 1">Godz</div>
+                <div class="day-header">Poniedziałek</div>
+                <div class="day-header">Wtorek</div>
+                <div class="day-header">Środa</div>
+                <div class="day-header">Czwartek</div>
+                <div class="day-header">Piątek</div>
+
+                <div class="time-column" id="timeColumn"></div>
+
+                <div class="day-column" data-day="1"></div>
+                <div class="day-column" data-day="2"></div>
+                <div class="day-column" data-day="3"></div>
+                <div class="day-column" data-day="4"></div>
+                <div class="day-column" data-day="5"></div>
+            </div>
+        </div>
+
+        <aside class="sidebar">
+            <h2>Filtrowanie Grup</h2>
+            <div class="controls">
+                <button class="btn-small" onclick="toggleAllGroups(true)">Zaznacz wszystkie</button>
+                <button class="btn-small" onclick="toggleAllGroups(false)">Odznacz wszystkie</button>
+            </div>
+            <ul class="group-filter-list" id="groupList">
+                <li style="color: #888; font-style: italic;">Wgraj plik CSV aby zobaczyć grupy...</li>
+            </ul>
+        </aside>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <script>
+        const START_HOUR = 7;
+        const END_HOUR = 21;
+
+        const fileInput = document.getElementById('csvFileInput');
+        const groupList = document.getElementById('groupList');
+        const tooltip = document.getElementById('tooltip');
+
+        let rawEventsData = [];
+        // Struktura danych: Map<NazwaPrzedmiotu, Set<NazwaGrupy>>
+        let subjectGroupsMap = new Map();
+        // Aktywne filtry: Set<"NazwaPrzedmiotu|NazwaGrupy">
+        let activeFilters = new Set();
+
+        // Generowanie godzin
+        const timeCol = document.getElementById('timeColumn');
+        for (let h = START_HOUR; h <= END_HOUR; h++) {
+            let div = document.createElement('div');
+            div.className = 'time-slot';
+            div.textContent = `${h}:00`;
+            timeCol.appendChild(div);
+        }
+
+        fileInput.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) { processCSV(e.target.result); };
+            reader.readAsText(file);
+        });
+
+        function processCSV(csvText) {
+            rawEventsData = [];
+            subjectGroupsMap.clear();
+            activeFilters.clear();
+
+            const lines = csvText.trim().split('\n');
+            if (lines.length < 2) return alert("Pusty lub błędny plik!");
+
+            const headers = lines[0].split(';').map(h => h.trim().replace(/"/g, ''));
+
+            // Pobieranie indeksów kolumn
+            const idxTitle = headers.indexOf('Tytuł Zajęć');
+            const idxStart = headers.indexOf('Rozpoczęcie');
+            const idxEnd = headers.indexOf('Zakończenie');
+            const idxLecturer = headers.indexOf('Wykładowca');
+            const idxRoom = headers.indexOf('Sala');
+            const idxGroup = headers.indexOf('Nazwa Grupy');
+            const idxType = headers.indexOf('Forma Zajęć');
+            const idxColor = headers.indexOf('Kolor');
+
+            if (idxStart === -1 || idxGroup === -1 || idxTitle === -1) {
+                alert("Brak wymaganych kolumn (Rozpoczęcie, Nazwa Grupy, Tytuł Zajęć).");
+                return;
+            }
+
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const row = lines[i].split(';');
+
+                const title = row[idxTitle]?.replace(/"/g, '').trim() || 'Bez nazwy';
+                const groupName = row[idxGroup] ? row[idxGroup].replace(/"/g, '').trim() : 'Brak grupy';
+                const lecturer = row[idxLecturer]?.replace(/"/g, '').trim() || 'Brak prowadzącego';
+
+                // Klucz pod-elementu: "Prowadzący | Grupa"
+                const subItemLabel = `${lecturer} | ${groupName}`;
+
+                // Dodawanie do mapy przedmiotów i ich pod-elementów
+                if (!subjectGroupsMap.has(title)) {
+                    subjectGroupsMap.set(title, new Set());
+                }
+                subjectGroupsMap.get(title).add(subItemLabel);
+
+                // Domyślnie wszystkie aktywne. Klucz filtru: "Przedmiot|Prowadzący | Grupa"
+                // Używamy unikalnego klucza, który łatwo odtworuć
+                const uniqueFilterKey = `${title}|${subItemLabel}`;
+                activeFilters.add(uniqueFilterKey);
+
+                const startTimeStr = row[idxStart];
+                const endTimeStr = row[idxEnd];
+
+                if (!startTimeStr || !endTimeStr) continue;
+
+                const startDate = new Date(startTimeStr);
+                const endDate = new Date(endTimeStr);
+
+                // Obliczamy dzień tygodnia (1-5) i godziny
+                let dayOfWeek = startDate.getDay();
+                if (dayOfWeek === 0) dayOfWeek = 7;
+
+                const startH = startDate.getHours() + (startDate.getMinutes() / 60);
+                const endH = endDate.getHours() + (endDate.getMinutes() / 60);
+
+                let eventColor = null;
+                if (idxColor !== -1 && row[idxColor]) {
+                    eventColor = row[idxColor].replace(/"/g, '').trim();
+                }
+
+                rawEventsData.push({
+                    title: title,
+                    lecturer: lecturer,
+                    room: row[idxRoom]?.replace(/"/g, '').trim() || '',
+                    type: row[idxType]?.replace(/"/g, '').trim() || '',
+                    group: groupName,
+                    day: dayOfWeek,
+                    startMetric: startH,
+                    endMetric: endH,
+                    durationMetric: endH - startH,
+                    color: eventColor,
+                    // Przechowujemy też ten klucz w obiekcie dla łatwiejszego filtrowania
+                    filterKey: uniqueFilterKey
+                });
+            }
+
+            renderSidebar();
+            renderEventsOnGrid();
+        }
+
+        function renderSidebar() {
+            groupList.innerHTML = '';
+            const sortedSubjects = Array.from(subjectGroupsMap.keys()).sort();
+
+            sortedSubjects.forEach(subject => {
+                const groupsSet = subjectGroupsMap.get(subject);
+                const sortedSubItems = Array.from(groupsSet).sort(); // Sortowanie alfabetyczne "Prowadzący | Grupa"
+
+                // Kontener dla przedmiotu
+                const subjectLi = document.createElement('li');
+                subjectLi.style.marginBottom = '15px';
+
+                // Nagłówek przedmiotu z opcją zaznaczania wszystkiego
+                const headerDiv = document.createElement('div');
+                headerDiv.style.fontWeight = 'bold';
+                headerDiv.style.marginBottom = '5px';
+                headerDiv.style.display = 'flex';
+                headerDiv.style.alignItems = 'center';
+                headerDiv.style.justifyContent = 'space-between';
+                headerDiv.style.backgroundColor = '#f0f0f0';
+                headerDiv.style.padding = '5px';
+                headerDiv.style.borderRadius = '4px';
+
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = subject;
+                titleSpan.style.flex = '1';
+                titleSpan.style.fontSize = '0.9rem';
+
+                // Checkbox dla całego przedmiotu
+                const subjectCheckbox = document.createElement('input');
+                subjectCheckbox.type = 'checkbox';
+                subjectCheckbox.checked = true;
+                subjectCheckbox.title = "Zaznacz/Odznacz wszystkie opcje tego przedmiotu";
+                subjectCheckbox.addEventListener('change', (e) => toggleSubjectGroups(subject, e.target.checked));
+
+                headerDiv.appendChild(titleSpan);
+                headerDiv.appendChild(subjectCheckbox);
+                subjectLi.appendChild(headerDiv);
+
+                // Lista grup dla tego przedmiotu
+                const ulGroups = document.createElement('ul');
+                ulGroups.style.listStyle = 'none';
+                ulGroups.style.paddingLeft = '15px';
+                ulGroups.style.margin = '0';
+
+                sortedSubItems.forEach(subItemLabel => {
+                    const li = document.createElement('li');
+                    li.className = 'group-item';
+                    li.style.fontSize = '0.85rem';
+
+                    const filterKey = `${subject}|${subItemLabel}`;
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = filterKey;
+                    checkbox.checked = activeFilters.has(filterKey);
+                    checkbox.dataset.subject = subject; // tagowanie checkboxa
+                    checkbox.addEventListener('change', handleFilterChange);
+
+                    const label = document.createElement('label');
+                    label.textContent = subItemLabel; // Wyświetlamy "Prowadzący | Grupa"
+                    label.addEventListener('click', () => checkbox.click());
+
+                    li.appendChild(checkbox);
+                    li.appendChild(label);
+                    ulGroups.appendChild(li);
+                });
+
+                subjectLi.appendChild(ulGroups);
+                groupList.appendChild(subjectLi);
+            });
+        }
+
+        function toggleSubjectGroups(subject, isChecked) {
+            // Znajdź wszystkie checkboxy należące do tego przedmiotu
+            const checkboxes = document.querySelectorAll(`input[data-subject="${subject}"]`);
+            checkboxes.forEach(cb => {
+                cb.checked = isChecked;
+                const filterKey = cb.value;
+                if (isChecked) {
+                    activeFilters.add(filterKey);
+                } else {
+                    activeFilters.delete(filterKey);
+                }
+            });
+            renderEventsOnGrid();
+        }
+
+        function handleFilterChange(e) {
+            const filterKey = e.target.value;
+            const subject = e.target.dataset.subject;
+
+            if (e.target.checked) {
+                activeFilters.add(filterKey);
+            } else {
+                activeFilters.delete(filterKey);
+            }
+
+            updateSubjectCheckboxState(subject);
+            renderEventsOnGrid();
+        }
+
+        function updateSubjectCheckboxState(subject) {
+            // Opcjonalne
+        }
+
+        function toggleAllGroups(state) {
+            // Aktualizacja wszystkich filtrów
+            document.querySelectorAll('.group-filter-list input[type="checkbox"]').forEach(cb => {
+                cb.checked = state;
+
+                // Jeśli to checkbox grupy (ma value z pipe)
+                if (cb.value && cb.value.includes('|')) {
+                    if (state) activeFilters.add(cb.value);
+                    else activeFilters.delete(cb.value);
+                }
+            });
+            renderEventsOnGrid();
+        }
+
+        function renderEventsOnGrid() {
+            document.querySelectorAll('.event-block').forEach(el => el.remove());
+
+            // 1. Filtrujemy po kluczu filterKey (który zawiera Przedmiot, Prowadzącego i Grupę)
+            const visibleRows = rawEventsData.filter(e => activeFilters.has(e.filterKey));
+
+            // 2. SCALANIE DUPLIKATÓW
+            const mergedEventsMap = new Map();
+
+            visibleRows.forEach(row => {
+                // Klucz unikalności: Dzień + Godziny + Sala + Nazwa
+                const uniqueKey = `${row.day}-${row.startMetric}-${row.endMetric}-${row.room}-${row.title}`;
+
+                if (mergedEventsMap.has(uniqueKey)) {
+                    const existing = mergedEventsMap.get(uniqueKey);
+                    existing.groupsSet.add(row.group);
+                } else {
+                    mergedEventsMap.set(uniqueKey, {
+                        ...row,
+                        groupsSet: new Set([row.group])
+                    });
+                }
+            });
+
+            // Zamiana mapy na tablicę do rysowania
+            const mergedEvents = Array.from(mergedEventsMap.values());
+
+            // 3. Algorytm układania
+            for (let day = 1; day <= 5; day++) {
+                let dayEvents = mergedEvents.filter(e => e.day === day);
+                if (dayEvents.length === 0) continue;
+
+                dayEvents.sort((a, b) => a.startMetric - b.startMetric);
+
+                let columns = [];
+
+                dayEvents.forEach(event => {
+                    let placed = false;
+                    for (let i = 0; i < columns.length; i++) {
+                        let column = columns[i];
+                        let lastEventInColumn = column[column.length - 1];
+
+                        if (event.startMetric >= lastEventInColumn.endMetric) {
+                            column.push(event);
+                            event.colIndex = i;
+                            placed = true;
+                            break;
+                        }
+                    }
+
+                    if (!placed) {
+                        columns.push([event]);
+                        event.colIndex = columns.length - 1;
+                    }
+                });
+
+                dayEvents.forEach(event => {
+                    const collidingEvents = dayEvents.filter(other =>
+                        other !== event &&
+                        !(other.endMetric <= event.startMetric || other.startMetric >= event.endMetric)
+                    );
+
+                    const collisionGroup = [...collidingEvents, event];
+                    const maxColIndex = Math.max(...collisionGroup.map(e => e.colIndex));
+                    const totalColumnsInCluster = maxColIndex + 1;
+
+                    const widthPercent = 100 / totalColumnsInCluster;
+                    const leftPercent = event.colIndex * widthPercent;
+
+                    drawEventElement(event, widthPercent, leftPercent);
+                });
+            }
+        }
+
+        function drawEventElement(event, width, left) {
+            const column = document.querySelector(`.day-column[data-day="${event.day}"]`);
+            if (!column) return;
+
+            const div = document.createElement('div');
+            div.className = 'event-block';
+
+            const topPos = (event.startMetric - START_HOUR) * 60;
+            const height = event.durationMetric * 60;
+
+            div.style.top = `${topPos}px`;
+            div.style.height = `${height}px`;
+            div.style.width = `calc(${width}% - 4px)`;
+            div.style.left = `${left}%`;
+            div.style.backgroundColor = event.color ? event.color : '#4a90e2';
+
+            // Konwersja Set na ładny tekst (posortowany)
+            const groupsArray = Array.from(event.groupsSet).sort();
+            const groupsString = groupsArray.join(', ');
+
+            div.innerHTML = `
+            <div class="event-title">${event.title}</div>
+            <div class="event-details">${event.room}<br>${event.lecturer}</div>
+            <div class="event-groups" title="${groupsString}">Gr: ${groupsString}</div>
+        `;
+
+            div.addEventListener('mouseenter', (e) => showTooltip(e, event, groupsString));
+            div.addEventListener('mousemove', (e) => moveTooltip(e));
+            div.addEventListener('mouseleave', hideTooltip);
+
+            column.appendChild(div);
+        }
+
+        function showTooltip(e, data, groupsString) {
+            tooltip.style.display = 'block';
+            tooltip.innerHTML = `
+            <strong>${data.title}</strong>
+            Typ: ${data.type}<br>
+            Prowadzący: ${data.lecturer}<br>
+            Sala: ${data.room}<br>
+            <strong>Grupy:</strong> ${groupsString}<br>
+            Czas: ${formatTime(data.startMetric)} - ${formatTime(data.endMetric)}
+        `;
+            moveTooltip(e);
+        }
+
+        function moveTooltip(e) {
+            const x = e.pageX + 15;
+            const y = e.pageY + 15;
+            if (x + 300 > window.innerWidth) {
+                tooltip.style.left = (x - 315) + 'px';
+            } else {
+                tooltip.style.left = x + 'px';
+            }
+            tooltip.style.top = y + 'px';
+        }
+
+        function hideTooltip() {
+            tooltip.style.display = 'none';
+        }
+
+        function formatTime(decimalTime) {
+            const hrs = Math.floor(decimalTime);
+            const mins = Math.round((decimalTime - hrs) * 60);
+            return `${hrs}:${mins < 10 ? '0' + mins : mins}`;
+        }
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,12 @@
+services:
+  plan-backend:
+    build: .
+    container_name: plan-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PLAN_DB_PATH=/app/data/plan.sqlite3
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
