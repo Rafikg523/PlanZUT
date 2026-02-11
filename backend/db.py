@@ -152,6 +152,32 @@ class DB:
                 """
             )
 
+            # Minimal migrations for dev/iterative runs: CREATE TABLE IF NOT EXISTS does not evolve schema.
+            # We only add non-key columns here; if a key/PK is wrong, user should delete the cache DB.
+            def _cols(table: str) -> set[str]:
+                rows = conn.execute(f"PRAGMA table_info({table});").fetchall()
+                return {str(r["name"]) for r in rows}
+
+            cols = _cols("students")
+            if "majors_count" not in cols:
+                conn.execute("ALTER TABLE students ADD COLUMN majors_count INTEGER NOT NULL DEFAULT 1;")
+            if "created_at" not in cols:
+                conn.execute("ALTER TABLE students ADD COLUMN created_at TEXT NOT NULL DEFAULT '';")
+            if "updated_at" not in cols:
+                conn.execute("ALTER TABLE students ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';")
+
+            cols = _cols("student_tok_names")
+            if "first_seen_at" not in cols:
+                conn.execute("ALTER TABLE student_tok_names ADD COLUMN first_seen_at TEXT NOT NULL DEFAULT '';")
+            if "last_seen_at" not in cols:
+                conn.execute("ALTER TABLE student_tok_names ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT '';")
+
+            cols = _cols("student_groups")
+            if "first_seen_at" not in cols:
+                conn.execute("ALTER TABLE student_groups ADD COLUMN first_seen_at TEXT NOT NULL DEFAULT '';")
+            if "last_seen_at" not in cols:
+                conn.execute("ALTER TABLE student_groups ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT '';")
+
     @staticmethod
     def _now_iso() -> str:
         return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
@@ -650,6 +676,53 @@ class DB:
                   AND start >= ?
                   AND start < ?
                 ORDER BY start ASC, group_name ASC;
+                """
+                rows = conn.execute(sql, [*chunk, start, end]).fetchall()
+                out.extend([dict(r) for r in rows])
+        return out
+
+    def list_filter_items_for_groups(self, groups: Iterable[str], start: str, end: str) -> list[dict]:
+        """
+        Zwraca unikatowe "pozycje do filtra" (caly zakres), niezaleznie od aktualnie wyswietlanego tygodnia.
+
+        Frontend grupuje po:
+        - base: tytul bez ostatniego nawiasu (np. "Sieci komputerowe (L)" -> "Sieci komputerowe")
+        - formTitle: title (np. "Sieci komputerowe (L)")
+        - option: group_name | worker/worker_title
+
+        start/end: lokalne ISO bez offsetu (np. 2026-03-16T00:00:00), zakres [start, end)
+        """
+        groups = [g for g in (str(x).strip() for x in groups) if g]
+        if not groups:
+            return []
+        start = str(start).strip()
+        end = str(end).strip()
+
+        out: list[dict] = []
+        chunk_size = 900
+        with self._connect() as conn:
+            for i in range(0, len(groups), chunk_size):
+                chunk = groups[i : i + chunk_size]
+                qs = ",".join(["?"] * len(chunk))
+                sql = f"""
+                SELECT DISTINCT
+                    title,
+                    subject,
+                    group_name,
+                    tok_name,
+                    worker,
+                    worker_title
+                FROM lessons
+                WHERE group_name IN ({qs})
+                  AND start >= ?
+                  AND start < ?
+                ORDER BY
+                    COALESCE(tok_name, ''),
+                    COALESCE(subject, ''),
+                    COALESCE(title, ''),
+                    group_name ASC,
+                    COALESCE(worker, ''),
+                    COALESCE(worker_title, '');
                 """
                 rows = conn.execute(sql, [*chunk, start, end]).fetchall()
                 out.extend([dict(r) for r in rows])

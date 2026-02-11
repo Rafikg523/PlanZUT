@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -35,6 +36,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(sqlite3.Error)
+def _sqlite_error_handler(_: Request, exc: sqlite3.Error) -> JSONResponse:
+    # Zamiast "Internal Server Error" bez kontekstu, zwracamy czytelny detail dla frontendu.
+    return JSONResponse(status_code=500, content={"detail": f"DB error: {exc}"})
 
 
 @app.on_event("startup")
@@ -339,6 +346,8 @@ def student_week(req: StudentWeekRequest) -> dict:
 
     # Wyswietlamy tylko wybrany tydzien, nawet jesli dane pobieralismy w szerszym zakresie.
     lessons = db.list_lessons_for_groups(groups, week_start_local, week_end_local)
+    # Filtry budujemy z calego zakresu, a nie tylko z biezacego tygodnia.
+    filter_items = db.list_filter_items_for_groups(groups, range_start_local, range_end_local)
     return {
         "album_number": album,
         "week_start": monday.isoformat(),
@@ -352,6 +361,7 @@ def student_week(req: StudentWeekRequest) -> dict:
         "errors": errors,
         "last_error": last_error,
         "lessons": lessons,
+        "filter_items": filter_items,
     }
 
 

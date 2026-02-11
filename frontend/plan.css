@@ -1,7 +1,8 @@
 /* Plan page styles layered on top of frontend/styles.css */
 
 .wrap {
-  width: min(1400px, calc(100% - 40px));
+  width: calc(100% - 40px);
+  max-width: none;
 }
 
 .plan-grid {
@@ -44,6 +45,46 @@
 
 .plan-actions .btn {
   padding: 10px 12px;
+}
+
+.week-head-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.week-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.filter-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.tok-select {
+  min-width: 340px;
+  max-width: 420px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  outline: none;
+  box-shadow: 0 1px 0 rgba(2, 6, 23, 0.05);
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.tok-select:focus {
+  border-color: rgba(11, 132, 243, 0.45);
+  box-shadow: 0 0 0 3px rgba(11, 132, 243, 0.12);
 }
 
 .plan-note {
@@ -296,6 +337,14 @@
 @media (max-width: 980px) {
   .plan-grid {
     grid-template-columns: 1fr;
+  }
+  .filter-meta {
+    align-items: flex-start;
+  }
+  .tok-select {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
   }
   .plan-sidebar .inner {
     max-height: none;

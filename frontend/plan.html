@@ -91,8 +91,6 @@
             </div>
 
             <div class="plan-actions">
-              <button class="btn" id="btnPrevWeek" type="button">◀ tydzień</button>
-              <button class="btn" id="btnNextWeek" type="button">tydzień ▶</button>
               <button class="btn primary" id="btnLoad" type="button">Załaduj</button>
               <button class="btn" id="btnRefresh" type="button">Pobierz ponownie</button>
             </div>
@@ -104,7 +102,13 @@
         <div class="card rise delay1 plan-calendar">
           <div class="card-h" style="padding: 16px 16px 0 16px">
             <h2>Week View</h2>
-            <div class="hint mono" id="weekHint">Pon-Pt</div>
+            <div class="week-head-right">
+              <div class="hint mono" id="weekHint">Pon-Pt</div>
+              <div class="week-nav">
+                <button class="btn" id="btnPrevWeek" type="button">◀ tydzień</button>
+                <button class="btn" id="btnNextWeek" type="button">tydzień ▶</button>
+              </div>
+            </div>
           </div>
 
           <div class="inner">
@@ -132,13 +136,21 @@
         <div class="card rise delay2 plan-sidebar">
           <div class="card-h" style="padding: 16px 16px 0 16px">
             <h2>Filter</h2>
-            <div class="hint">Przedmiot → forma → grupa | prowadzący</div>
+            <div class="filter-meta">
+              <div class="hint">Przedmiot → forma → grupa | prowadzący</div>
+              <select id="tokSelect" class="tok-select" aria-label="tok_name">
+                <option value="__all__">Wszystkie tok_name</option>
+              </select>
+            </div>
           </div>
 
           <div class="inner">
             <div class="controls">
               <button class="btn-small" id="btnAllOn" type="button">Zaznacz wszystkie</button>
               <button class="btn-small" id="btnAllOff" type="button">Odznacz wszystkie</button>
+              <button class="btn-small" id="btnSaveFilters" type="button">Zapisz wybór</button>
+              <button class="btn-small" id="btnLoadFilters" type="button">Wczytaj wybór</button>
+              <input id="fileLoadFilters" type="file" accept="application/json" hidden />
             </div>
 
             <ul class="group-filter-list" id="groupList">

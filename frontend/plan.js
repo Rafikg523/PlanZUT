@@ -27,6 +27,10 @@ const statusTextEl = $("#statusText");
 
 const groupListEl = $("#groupList");
 const tooltipEl = $("#tooltip");
+const tokSelectEl = $("#tokSelect");
+const btnSaveFiltersEl = $("#btnSaveFilters");
+const btnLoadFiltersEl = $("#btnLoadFilters");
+const fileLoadFiltersEl = $("#fileLoadFilters");
 
 const hMon = $("#hMon");
 const hTue = $("#hTue");
@@ -37,12 +41,15 @@ const hFri = $("#hFri");
 const state = {
   ready: false,
   rawEvents: [],
+  filterRows: [],
   activeFilters: new Set(),
   seenFilterKeys: new Set(),
   filtersTouched: false,
   subjectToKeys: new Map(), // subjectBase -> Set<filterKey>
   formToKeys: new Map(), // `${subjectBase}||${formTitle}` -> Set<filterKey>
   working: false,
+  selectedTok: "__all__",
+  tokNames: [],
 };
 
 function setStatus(msg) {
@@ -220,6 +227,7 @@ function buildRawEventsFromLessons(lessons) {
     const group = String(ev.group_name || "").trim();
     const lecturer = String(ev.worker || ev.worker_title || "").trim() || "Brak prowadzącego";
     const room = String(ev.room || "").trim();
+    const tokName = String(ev.tok_name || "").trim();
 
     const startParts = parseLocalIsoToParts(ev.start);
     const endParts = parseLocalIsoToParts(ev.end);
@@ -240,6 +248,7 @@ function buildRawEventsFromLessons(lessons) {
       room,
       type: String(ev.lesson_form || "").trim(),
       group,
+      tok_name: tokName,
       day,
       startMetric,
       endMetric,
@@ -250,6 +259,54 @@ function buildRawEventsFromLessons(lessons) {
     });
   }
   return out;
+}
+
+function buildFilterRowsFromItems(items) {
+  const out = [];
+  for (const ev of items || []) {
+    if (!ev || typeof ev !== "object") continue;
+    const title = String(ev.title || "Bez nazwy");
+    const base = stripLastParen(title) || String(ev.subject || "").trim() || title;
+    const formTitle = title;
+    const group = String(ev.group_name || "").trim();
+    if (!group) continue;
+    const lecturer = String(ev.worker || ev.worker_title || "").trim() || "Brak prowadzącego";
+    const tokName = String(ev.tok_name || "").trim();
+    const filterKey = `${base}|${formTitle}|${group}|${lecturer}`;
+    out.push({ base, formTitle, group, lecturer, tok_name: tokName, filterKey });
+  }
+  return out;
+}
+
+function setTokOptions(tokNames) {
+  if (!tokSelectEl) return;
+  const current = String(tokSelectEl.value || "__all__");
+  const clean = Array.from(new Set((tokNames || []).map((t) => String(t || "").trim()).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, "pl")
+  );
+
+  tokSelectEl.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "__all__";
+  optAll.textContent = "Wszystkie tok_name";
+  tokSelectEl.appendChild(optAll);
+  for (const t of clean) {
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t;
+    tokSelectEl.appendChild(opt);
+  }
+
+  // Keep selection if possible.
+  const next =
+    current && current !== "__all__" && clean.includes(current)
+      ? current
+      : state.selectedTok && state.selectedTok !== "__all__" && clean.includes(state.selectedTok)
+        ? state.selectedTok
+        : "__all__";
+  tokSelectEl.value = next;
+  state.selectedTok = next;
+  state.tokNames = clean;
 }
 
 function rebuildSidebarData(rawEvents) {
@@ -276,10 +333,9 @@ function rebuildSidebarData(rawEvents) {
 
   // Update selection:
   // - before user touches filters: default to "everything on" for currently visible keys
-  // - after user touches filters: keep prior state, but auto-enable brand new keys so new subjects don't disappear
+  // - after user touches filters: keep prior state (nie auto-wlaczamy nowych kluczy; to stabilizuje zapis/odczyt filtrów)
   for (const k of allKeys) {
-    const isNew = !state.seenFilterKeys.has(k);
-    if (!state.filtersTouched || isNew) state.activeFilters.add(k);
+    if (!state.filtersTouched) state.activeFilters.add(k);
     state.seenFilterKeys.add(k);
   }
 
@@ -327,7 +383,9 @@ function renderSidebar(tree, optionToKey) {
   if (subjects.length === 0) {
     const li = document.createElement("li");
     li.className = "muted";
-    li.textContent = "Brak zajęć w tym tygodniu (albo nic nie jest zaznaczone w filtrze).";
+    li.textContent = state.ready
+      ? "Brak zajęć w wybranym zakresie."
+      : "Załaduj plan, aby zobaczyć listę zajęć dla całego zakresu.";
     groupListEl.appendChild(li);
     return;
   }
@@ -440,7 +498,11 @@ function clearEvents() {
 function renderEventsOnGrid() {
   clearEvents();
 
-  const visible = state.rawEvents.filter((e) => state.activeFilters.has(e.filterKey));
+  const visible = state.rawEvents.filter((e) => {
+    if (!state.activeFilters.has(e.filterKey)) return false;
+    if (state.selectedTok && state.selectedTok !== "__all__") return String(e.tok_name || "").trim() === state.selectedTok;
+    return true;
+  });
 
   // Merge duplicates (lecture shared across multiple groups etc.)
   const mergedMap = new Map();
@@ -566,7 +628,11 @@ function hideTooltip() {
 }
 
 function renderEverything() {
-  const { tree, optionToKey } = rebuildSidebarData(state.rawEvents);
+  const visibleFilterRows =
+    state.selectedTok && state.selectedTok !== "__all__"
+      ? state.filterRows.filter((r) => String(r.tok_name || "").trim() === state.selectedTok)
+      : state.filterRows;
+  const { tree, optionToKey } = rebuildSidebarData(visibleFilterRows);
   renderSidebar(tree, optionToKey);
   renderEventsOnGrid();
 }
@@ -617,6 +683,7 @@ async function ensureStudent({ force }) {
     timeoutMs: 180000,
   });
   state.ready = true;
+  setTokOptions(j.tok_names || []);
   if (j.week_start) weekStartEl.value = j.week_start;
   if (j.range_start) rangeStartEl.value = String(j.range_start).slice(0, 10);
   if (j.range_end) rangeEndEl.value = endExclusiveLocalIsoToInclusiveYMD(j.range_end);
@@ -657,6 +724,12 @@ async function loadWeek({ forceLessons }) {
   });
 
   state.rawEvents = buildRawEventsFromLessons(j.lessons || []);
+  // Filtry maja obejmowac caly okres (range), a nie tylko biezacy tydzien.
+  // Backend zwraca filter_items (unikatowe pola) z calego zakresu.
+  const fr = buildFilterRowsFromItems(j.filter_items || []);
+  state.filterRows = fr.length ? fr : buildFilterRowsFromItems(j.lessons || []);
+  const toksFromData = Array.from(new Set(state.filterRows.map((r) => String(r.tok_name || "").trim()).filter(Boolean)));
+  if (toksFromData.length) setTokOptions(toksFromData);
   if (j.week_start) weekStartEl.value = j.week_start;
   if (j.range_start) rangeStartEl.value = String(j.range_start).slice(0, 10);
   if (j.range_end) rangeEndEl.value = endExclusiveLocalIsoToInclusiveYMD(j.range_end);
@@ -760,19 +833,80 @@ btnRefreshEl.addEventListener("click", async () => {
 
 $("#btnAllOn").addEventListener("click", () => {
   state.filtersTouched = true;
-  const keys = new Set();
   for (const s of state.subjectToKeys.values()) {
-    for (const k of s) keys.add(k);
+    for (const k of s) state.activeFilters.add(k);
   }
-  state.activeFilters = keys;
   renderEverything();
 });
 
 $("#btnAllOff").addEventListener("click", () => {
   state.filtersTouched = true;
-  state.activeFilters = new Set();
+  // Only for currently visible keys (tak zeby zarzadzac oddzielnie tok_name).
+  for (const s of state.subjectToKeys.values()) {
+    for (const k of s) state.activeFilters.delete(k);
+  }
   renderEverything();
 });
+
+function downloadJson(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function filtersFilename() {
+  const album = (albumEl.value || "").trim();
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace("T", "_")
+    .slice(0, 15);
+  return `plan_filters${album ? "_" + album : ""}_${stamp}.json`;
+}
+
+function exportFiltersToFile() {
+  const album = (albumEl.value || "").trim();
+  const majorsCount = Number(majorsEl.value || 1);
+  const payload = {
+    version: 1,
+    kind: "plan_filters",
+    created_at: new Date().toISOString(),
+    album_number: album || null,
+    majors_count: Number.isFinite(majorsCount) ? majorsCount : null,
+    week_start: weekStartEl.value || null,
+    range_start: rangeStartEl.value || null,
+    range_end: rangeEndEl.value || null,
+    selected_tok: state.selectedTok || "__all__",
+    active_filters: Array.from(state.activeFilters),
+  };
+  downloadJson(payload, filtersFilename());
+  toast("Zapisano plik filtrów");
+}
+
+async function importFiltersFromFile(file) {
+  const text = await file.text();
+  const j = JSON.parse(text);
+  const keys = Array.isArray(j.active_filters) ? j.active_filters : null;
+  if (!keys) throw new Error("Nieprawidłowy plik: brak active_filters[]");
+
+  const cleaned = keys.filter((x) => typeof x === "string" && x.trim());
+  state.activeFilters = new Set(cleaned);
+  state.filtersTouched = true;
+
+  if (typeof j.selected_tok === "string" && j.selected_tok.trim()) {
+    state.selectedTok = j.selected_tok.trim();
+    if (tokSelectEl) tokSelectEl.value = state.selectedTok;
+  }
+
+  renderEverything();
+  toast("Wczytano filtry");
+}
 
 function boot() {
   seedTimeColumn();
@@ -790,3 +924,36 @@ function boot() {
 }
 
 boot();
+
+if (tokSelectEl) {
+  tokSelectEl.addEventListener("change", () => {
+    state.selectedTok = String(tokSelectEl.value || "__all__");
+    renderEverything();
+  });
+}
+
+if (btnSaveFiltersEl) {
+  btnSaveFiltersEl.addEventListener("click", () => {
+    try {
+      exportFiltersToFile();
+    } catch (e) {
+      setStatus(String(e));
+      toast(String(e));
+    }
+  });
+}
+
+if (btnLoadFiltersEl && fileLoadFiltersEl) {
+  btnLoadFiltersEl.addEventListener("click", () => fileLoadFiltersEl.click());
+  fileLoadFiltersEl.addEventListener("change", async () => {
+    const file = fileLoadFiltersEl.files && fileLoadFiltersEl.files[0];
+    fileLoadFiltersEl.value = "";
+    if (!file) return;
+    try {
+      await importFiltersFromFile(file);
+    } catch (e) {
+      setStatus(String(e));
+      toast(String(e));
+    }
+  });
+}
