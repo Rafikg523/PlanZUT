@@ -81,6 +81,74 @@ class DB:
                     last_seen_at  TEXT NOT NULL,
                     PRIMARY KEY (tok_name, group_name)
                 );
+
+                -- Uzytkownicy po numerze albumu (frontend nie powinien za kazdym razem przeszukiwac ZUT).
+                CREATE TABLE IF NOT EXISTS students (
+                    album_number TEXT PRIMARY KEY,
+                    majors_count INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS student_tok_names (
+                    album_number TEXT NOT NULL,
+                    tok_name TEXT NOT NULL,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at  TEXT NOT NULL,
+                    PRIMARY KEY (album_number, tok_name),
+                    FOREIGN KEY (album_number) REFERENCES students(album_number) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS student_groups (
+                    album_number TEXT NOT NULL,
+                    tok_name TEXT NOT NULL,
+                    group_name TEXT NOT NULL,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at  TEXT NOT NULL,
+                    PRIMARY KEY (album_number, tok_name, group_name),
+                    FOREIGN KEY (album_number) REFERENCES students(album_number) ON DELETE CASCADE
+                );
+
+                -- Cache pobran zajec dla grup w konkretnym zakresie (start/end jako lokalne ISO bez offsetu).
+                CREATE TABLE IF NOT EXISTS group_fetches (
+                    group_name TEXT NOT NULL,
+                    start_iso TEXT NOT NULL,
+                    end_iso TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    last_error TEXT,
+                    PRIMARY KEY (group_name, start_iso, end_iso)
+                );
+
+                -- Zajecia zwracane z ZUT /schedule_student.php?group=...
+                -- start/end przechowujemy w formacie jak w API (lokalne ISO bez offsetu), zeby latwo filtrowac po tygodniach.
+                CREATE TABLE IF NOT EXISTS lessons (
+                    group_name TEXT NOT NULL,
+                    start TEXT NOT NULL,
+                    end TEXT NOT NULL,
+                    title TEXT,
+                    description TEXT,
+                    worker_title TEXT,
+                    worker TEXT,
+                    worker_cover TEXT,
+                    lesson_form TEXT,
+                    lesson_form_short TEXT,
+                    tok_name TEXT,
+                    room TEXT,
+                    lesson_status TEXT,
+                    lesson_status_short TEXT,
+                    status_item TEXT,
+                    subject TEXT,
+                    hours TEXT,
+                    color TEXT,
+                    border_color TEXT,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at  TEXT NOT NULL,
+                    PRIMARY KEY (group_name, start, end)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_lessons_start ON lessons(start);
+                CREATE INDEX IF NOT EXISTS idx_lessons_group ON lessons(group_name);
                 """
             )
 
@@ -242,3 +310,366 @@ class DB:
         with self._connect() as conn:
             rows = conn.execute("SELECT name FROM rooms ORDER BY name ASC;").fetchall()
             return [r["name"] for r in rows]
+
+    # ----------------------------
+    # Student workflow (album -> tok_name -> grupy -> zajecia)
+    # ----------------------------
+
+    def upsert_student(self, album_number: str, majors_count: int) -> None:
+        now = self._now_iso()
+        album_number = str(album_number).strip()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO students(album_number, majors_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(album_number) DO UPDATE SET
+                    majors_count=excluded.majors_count,
+                    updated_at=excluded.updated_at;
+                """,
+                (album_number, int(majors_count), now, now),
+            )
+
+    def student_exists(self, album_number: str) -> bool:
+        album_number = str(album_number).strip()
+        with self._connect() as conn:
+            row = conn.execute("SELECT 1 FROM students WHERE album_number=?;", (album_number,)).fetchone()
+            return bool(row)
+
+    def replace_student_tok_names(self, album_number: str, tok_names: Iterable[str]) -> None:
+        """
+        Nadpisuje tok_name dla studenta (uzywane przy force refresh).
+        """
+        now = self._now_iso()
+        album_number = str(album_number).strip()
+        tok_names = [t for t in (str(x).strip() for x in tok_names) if t]
+        with self._connect() as conn:
+            conn.execute("DELETE FROM student_tok_names WHERE album_number=?;", (album_number,))
+            if tok_names:
+                conn.executemany(
+                    """
+                    INSERT INTO student_tok_names(album_number, tok_name, first_seen_at, last_seen_at)
+                    VALUES (?, ?, ?, ?);
+                    """,
+                    [(album_number, t, now, now) for t in tok_names],
+                )
+
+    def list_student_tok_names(self, album_number: str) -> list[str]:
+        album_number = str(album_number).strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT tok_name FROM student_tok_names
+                WHERE album_number=?
+                ORDER BY first_seen_at ASC, tok_name ASC;
+                """,
+                (album_number,),
+            ).fetchall()
+            return [str(r["tok_name"]) for r in rows]
+
+    def replace_student_groups(self, album_number: str, tok_name: str, groups: Iterable[str]) -> None:
+        """
+        Nadpisuje mapowanie grup dla studenta w ramach jednego tok_name.
+        """
+        now = self._now_iso()
+        album_number = str(album_number).strip()
+        tok_name = str(tok_name).strip()
+        groups = [g for g in (str(x).strip() for x in groups) if g]
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM student_groups WHERE album_number=? AND tok_name=?;",
+                (album_number, tok_name),
+            )
+            if groups:
+                conn.executemany(
+                    """
+                    INSERT INTO student_groups(album_number, tok_name, group_name, first_seen_at, last_seen_at)
+                    VALUES (?, ?, ?, ?, ?);
+                    """,
+                    [(album_number, tok_name, g, now, now) for g in groups],
+                )
+
+    def clear_student_groups(self, album_number: str) -> None:
+        album_number = str(album_number).strip()
+        with self._connect() as conn:
+            conn.execute("DELETE FROM student_groups WHERE album_number=?;", (album_number,))
+
+    def delete_student_groups_not_in_tok_names(self, album_number: str, tok_names: Iterable[str]) -> int:
+        """
+        Usuwa mapowania grup dla tok_name, ktore nie sa juz przypisane studentowi.
+        Zwraca liczbe usunietych wierszy.
+        """
+        album_number = str(album_number).strip()
+        toks = [t for t in (str(x).strip() for x in tok_names) if t]
+        with self._connect() as conn:
+            if not toks:
+                cur = conn.execute("DELETE FROM student_groups WHERE album_number=?;", (album_number,))
+                return int(cur.rowcount or 0)
+
+            qs = ",".join(["?"] * len(toks))
+            sql = f"DELETE FROM student_groups WHERE album_number=? AND tok_name NOT IN ({qs});"
+            cur = conn.execute(sql, [album_number, *toks])
+            return int(cur.rowcount or 0)
+
+    def list_student_groups(self, album_number: str) -> dict[str, list[str]]:
+        album_number = str(album_number).strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT tok_name, group_name FROM student_groups
+                WHERE album_number=?
+                ORDER BY tok_name ASC, group_name ASC;
+                """,
+                (album_number,),
+            ).fetchall()
+        out: dict[str, list[str]] = {}
+        for r in rows:
+            t = str(r["tok_name"])
+            g = str(r["group_name"])
+            out.setdefault(t, []).append(g)
+        return out
+
+    def list_student_groups_flat(self, album_number: str) -> list[str]:
+        album_number = str(album_number).strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT group_name FROM student_groups
+                WHERE album_number=?
+                ORDER BY group_name ASC;
+                """,
+                (album_number,),
+            ).fetchall()
+            return [str(r["group_name"]) for r in rows]
+
+    def list_canonical_groups(self, tok_name: str) -> list[str]:
+        tok_name = str(tok_name).strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT group_name FROM groups
+                WHERE tok_name=?
+                ORDER BY group_name ASC;
+                """,
+                (tok_name,),
+            ).fetchall()
+            return [str(r["group_name"]) for r in rows]
+
+    def upsert_canonical_groups(self, tok_name: str, groups: Iterable[str]) -> int:
+        """
+        Zwraca liczbe nowych grup dodanych do tabeli canonical `groups`.
+        """
+        now = self._now_iso()
+        tok_name = str(tok_name).strip()
+        groups = [g for g in (str(x).strip() for x in groups) if g]
+        if not tok_name or not groups:
+            return 0
+
+        rows = [(tok_name, g, now, now) for g in groups]
+        with self._connect() as conn:
+            before = conn.total_changes
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO groups(tok_name, group_name, first_seen_at, last_seen_at)
+                VALUES (?, ?, ?, ?);
+                """,
+                rows,
+            )
+            added = conn.total_changes - before
+            conn.executemany(
+                "UPDATE groups SET last_seen_at=? WHERE tok_name=? AND group_name=?;",
+                [(now, tok_name, g) for g in groups],
+            )
+        return int(added)
+
+    def get_group_fetch_status(self, group_name: str, start_iso: str, end_iso: str) -> Optional[str]:
+        group_name = str(group_name).strip()
+        start_iso = str(start_iso).strip()
+        end_iso = str(end_iso).strip()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT status FROM group_fetches
+                WHERE group_name=? AND start_iso=? AND end_iso=?;
+                """,
+                (group_name, start_iso, end_iso),
+            ).fetchone()
+            return str(row["status"]) if row else None
+
+    def upsert_group_fetch(
+        self,
+        group_name: str,
+        start_iso: str,
+        end_iso: str,
+        *,
+        status: str,
+        last_error: Optional[str] = None,
+    ) -> None:
+        now = self._now_iso()
+        group_name = str(group_name).strip()
+        start_iso = str(start_iso).strip()
+        end_iso = str(end_iso).strip()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO group_fetches(group_name, start_iso, end_iso, fetched_at, status, last_error)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(group_name, start_iso, end_iso) DO UPDATE SET
+                    fetched_at=excluded.fetched_at,
+                    status=excluded.status,
+                    last_error=excluded.last_error;
+                """,
+                (group_name, start_iso, end_iso, now, str(status), last_error),
+            )
+
+    def upsert_lessons(self, lessons: Iterable[dict]) -> int:
+        """
+        Upsertuje zajecia (key: group_name + start + end). Zwraca liczbe nowych rekordow.
+        """
+        now = self._now_iso()
+        rows: list[tuple] = []
+        for ev in lessons:
+            if not isinstance(ev, dict):
+                continue
+            group_name = ev.get("group_name")
+            start = ev.get("start")
+            end = ev.get("end")
+            if not group_name or not start or not end:
+                continue
+
+            rows.append(
+                (
+                    str(group_name),
+                    str(start),
+                    str(end),
+                    ev.get("title"),
+                    ev.get("description"),
+                    ev.get("worker_title"),
+                    ev.get("worker"),
+                    ev.get("worker_cover"),
+                    ev.get("lesson_form"),
+                    ev.get("lesson_form_short"),
+                    ev.get("tok_name"),
+                    ev.get("room"),
+                    ev.get("lesson_status"),
+                    ev.get("lesson_status_short"),
+                    ev.get("status_item"),
+                    ev.get("subject"),
+                    ev.get("hours"),
+                    ev.get("color"),
+                    ev.get("borderColor") if "borderColor" in ev else ev.get("border_color"),
+                    now,
+                    now,
+                )
+            )
+
+        if not rows:
+            return 0
+
+        with self._connect() as conn:
+            before = conn.total_changes
+            conn.executemany(
+                """
+                INSERT INTO lessons(
+                    group_name, start, end,
+                    title, description,
+                    worker_title, worker, worker_cover,
+                    lesson_form, lesson_form_short,
+                    tok_name, room,
+                    lesson_status, lesson_status_short,
+                    status_item, subject, hours,
+                    color, border_color,
+                    first_seen_at, last_seen_at
+                ) VALUES (
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?,
+                    ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
+                    ?, ?
+                )
+                ON CONFLICT(group_name, start, end) DO UPDATE SET
+                    title=excluded.title,
+                    description=excluded.description,
+                    worker_title=excluded.worker_title,
+                    worker=excluded.worker,
+                    worker_cover=excluded.worker_cover,
+                    lesson_form=excluded.lesson_form,
+                    lesson_form_short=excluded.lesson_form_short,
+                    tok_name=excluded.tok_name,
+                    room=excluded.room,
+                    lesson_status=excluded.lesson_status,
+                    lesson_status_short=excluded.lesson_status_short,
+                    status_item=excluded.status_item,
+                    subject=excluded.subject,
+                    hours=excluded.hours,
+                    color=excluded.color,
+                    border_color=excluded.border_color,
+                    last_seen_at=excluded.last_seen_at;
+                """,
+                rows,
+            )
+            # conn.total_changes policzy rowniez update; interesuje nas tylko "nowe".
+            # SQLite nie podaje tego latwo, wiec szacujemy po zmianie liczby wierszy (SELECT changes() tez miesza update).
+            # Pragmatycznie: zwracamy ile "insertowalo lub zupsertowalo" (>= nowe).
+            return int(conn.total_changes - before)
+
+    def list_lessons_for_groups(self, groups: Iterable[str], start: str, end: str) -> list[dict]:
+        """
+        Zwraca zajecia dla podanych grup w zakresie [start, end).
+        start/end: lokalne ISO bez offsetu (np. 2026-03-16T00:00:00)
+        """
+        groups = [g for g in (str(x).strip() for x in groups) if g]
+        if not groups:
+            return []
+        start = str(start).strip()
+        end = str(end).strip()
+
+        # SQLite ma limit na liczbe parametrow w IN (...); chunkujemy.
+        out: list[dict] = []
+        chunk_size = 900
+        with self._connect() as conn:
+            for i in range(0, len(groups), chunk_size):
+                chunk = groups[i : i + chunk_size]
+                qs = ",".join(["?"] * len(chunk))
+                sql = f"""
+                SELECT
+                    group_name, start, end,
+                    title, description,
+                    worker_title, worker, worker_cover,
+                    lesson_form, lesson_form_short,
+                    tok_name, room,
+                    lesson_status, lesson_status_short,
+                    status_item, subject, hours,
+                    color, border_color
+                FROM lessons
+                WHERE group_name IN ({qs})
+                  AND start >= ?
+                  AND start < ?
+                ORDER BY start ASC, group_name ASC;
+                """
+                rows = conn.execute(sql, [*chunk, start, end]).fetchall()
+                out.extend([dict(r) for r in rows])
+        return out
+
+    def delete_lessons_for_group_in_range(self, group_name: str, start: str, end: str) -> int:
+        """
+        Usuwa zajecia dla jednej grupy w zakresie [start, end). Zwraca liczbe usunietych wierszy.
+        """
+        group_name = str(group_name).strip()
+        start = str(start).strip()
+        end = str(end).strip()
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                DELETE FROM lessons
+                WHERE group_name=?
+                  AND start >= ?
+                  AND start < ?;
+                """,
+                (group_name, start, end),
+            )
+            return int(cur.rowcount or 0)

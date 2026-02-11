@@ -120,6 +120,15 @@ body {
   box-shadow: 0 8px 22px rgba(2, 6, 23, 0.05);
 }
 
+.meta a.pill {
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.meta a.pill:hover {
+  border-color: rgba(15, 23, 42, 0.22);
+}
+
 .mono {
   font-family: var(--mono);
 }
@@ -458,4 +467,3 @@ input:disabled {
     justify-content: flex-start;
   }
 }
-

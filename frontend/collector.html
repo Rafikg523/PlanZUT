@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plan ZUT - Group Collector</title>
+    <meta name="color-scheme" content="light" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+
+    <header class="top">
+      <div class="wrap">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"></div>
+          <div class="brand-text">
+            <div class="brand-title">Plan ZUT</div>
+            <div class="brand-sub">Group collector for a single tok_name</div>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div class="pill">
+            API: <span class="mono" id="apiBase">...</span>
+          </div>
+          <div class="pill" id="apiStatus">Checking...</div>
+          <a class="pill" href="/">Plan</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="grid">
+        <div class="card rise">
+          <div class="card-h">
+            <h2>Run Sync</h2>
+            <div class="hint">Start / attach to an active run</div>
+          </div>
+
+          <form id="syncForm" class="form">
+            <label class="field">
+              <span class="label">tok_name</span>
+              <input
+                id="tokName"
+                name="tokName"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                value="I_1A_S_2023_2024_1"
+              />
+            </label>
+
+            <div class="row">
+              <label class="field">
+                <span class="label">Date start</span>
+                <input id="dateStart" name="dateStart" type="date" />
+              </label>
+              <label class="field">
+                <span class="label">Date end</span>
+                <input id="dateEnd" name="dateEnd" type="date" />
+              </label>
+            </div>
+
+            <label class="check">
+              <input id="useLast3" type="checkbox" checked />
+              <span>Use last 3 months (backend default)</span>
+            </label>
+
+            <label class="field">
+              <span class="label">max_workers</span>
+              <input id="maxWorkers" name="maxWorkers" type="number" min="1" max="32" value="10" />
+            </label>
+
+            <div class="actions">
+              <button class="btn primary" id="btnStart" type="submit">Start Sync</button>
+              <button class="btn" id="btnAttach" type="button">Attach Active</button>
+            </div>
+
+            <div class="note mono" id="syncNote">.</div>
+          </form>
+        </div>
+
+        <div class="card rise delay1">
+          <div class="card-h">
+            <h2>Live Status</h2>
+            <div class="hint">Auto refresh ~1s while running</div>
+          </div>
+
+          <div class="status">
+            <div class="status-row">
+              <div class="kv">
+                <div class="k">run_id</div>
+                <div class="v mono" id="runId">-</div>
+              </div>
+              <div class="kv">
+                <div class="k">status</div>
+                <div class="v" id="runStatus">
+                  <span class="badge gray">idle</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="status-row">
+              <div class="kv">
+                <div class="k">range</div>
+                <div class="v mono" id="runRange">-</div>
+              </div>
+              <div class="kv">
+                <div class="k">errors</div>
+                <div class="v mono" id="runErrors">0</div>
+              </div>
+            </div>
+
+            <div class="progress">
+              <div class="progress-top">
+                <div class="mono" id="runRooms">rooms: 0 / 0</div>
+                <div class="mono" id="runGroups">groups: 0</div>
+              </div>
+              <div class="bar">
+                <div class="bar-in" id="barIn" style="width: 0%"></div>
+              </div>
+            </div>
+
+            <div class="err mono" id="runLastError" hidden></div>
+          </div>
+        </div>
+
+        <div class="card span2 rise delay2">
+          <div class="card-h">
+            <h2>Collected group_name</h2>
+            <div class="hint">Updates while a run is in progress</div>
+          </div>
+
+          <div class="tools">
+            <label class="field grow">
+              <span class="label">filter</span>
+              <input id="groupFilter" type="text" placeholder="e.g. S1_I_" spellcheck="false" />
+            </label>
+            <button class="btn" id="btnRefresh">Refresh</button>
+            <button class="btn" id="btnCopy">Copy</button>
+            <button class="btn" id="btnCsv">CSV</button>
+          </div>
+
+          <div class="summary mono">
+            <span id="groupsCount">0</span> groups
+            <span class="dot">·</span>
+            new since last refresh: <span id="groupsNew">0</span>
+          </div>
+
+          <ol class="list mono" id="groupsList"></ol>
+
+          <div class="toast" id="toast" hidden></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

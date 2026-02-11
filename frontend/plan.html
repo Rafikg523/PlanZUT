@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plan ZUT - Student Plan</title>
+    <meta name="color-scheme" content="light" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/plan.css" />
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+
+    <header class="top">
+      <div class="wrap">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"></div>
+          <div class="brand-text">
+            <div class="brand-title">Plan ZUT</div>
+            <div class="brand-sub">Student plan (album → tok_name → grupy → zajęcia)</div>
+          </div>
+        </div>
+
+        <div class="meta">
+          <div class="pill">
+            API: <span class="mono" id="apiBase">...</span>
+          </div>
+          <div class="pill" id="apiStatus">Checking...</div>
+          <div class="pill" id="workPill" data-working="0">
+            <span class="spin" aria-hidden="true"></span>
+            <span class="mono" id="workText">idle</span>
+          </div>
+          <a class="pill" href="/collector.html">Collector</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="plan-grid">
+        <div class="card rise plan-controls">
+          <div class="card-h">
+            <h2>Load Plan</h2>
+            <div class="hint">Cache w DB, "Pobierz ponownie" wymusza odświeżenie</div>
+          </div>
+
+          <form id="planForm" class="form">
+            <div class="row">
+              <label class="field">
+                <span class="label">Numer albumu</span>
+                <input
+                  id="albumNumber"
+                  inputmode="numeric"
+                  type="text"
+                  placeholder="np. 55764"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="field">
+                <span class="label">Ile kierunków?</span>
+                <input id="majorsCount" type="number" min="1" max="6" value="1" />
+              </label>
+            </div>
+
+            <div class="row">
+              <label class="field">
+                <span class="label">Tydzień (pon.)</span>
+                <input id="weekStart" type="date" />
+              </label>
+              <label class="field">
+                <span class="label">max_workers</span>
+                <input id="maxWorkers" type="number" min="1" max="32" value="10" />
+              </label>
+            </div>
+
+            <div class="row">
+              <label class="field">
+                <span class="label">Zakres start</span>
+                <input id="rangeStart" type="date" />
+              </label>
+              <label class="field">
+                <span class="label">Zakres end (włącznie)</span>
+                <input id="rangeEnd" type="date" />
+              </label>
+            </div>
+
+            <div class="plan-actions">
+              <button class="btn" id="btnPrevWeek" type="button">◀ tydzień</button>
+              <button class="btn" id="btnNextWeek" type="button">tydzień ▶</button>
+              <button class="btn primary" id="btnLoad" type="button">Załaduj</button>
+              <button class="btn" id="btnRefresh" type="button">Pobierz ponownie</button>
+            </div>
+
+            <div class="note mono plan-note" id="statusText">.</div>
+          </form>
+        </div>
+
+        <div class="card rise delay1 plan-calendar">
+          <div class="card-h" style="padding: 16px 16px 0 16px">
+            <h2>Week View</h2>
+            <div class="hint mono" id="weekHint">Pon-Pt</div>
+          </div>
+
+          <div class="inner">
+            <div class="calendar-wrapper">
+              <div class="calendar-grid" id="calendarGrid">
+                <div class="day-header" style="grid-column: 1">Godz</div>
+                <div class="day-header" id="hMon">Poniedziałek</div>
+                <div class="day-header" id="hTue">Wtorek</div>
+                <div class="day-header" id="hWed">Środa</div>
+                <div class="day-header" id="hThu">Czwartek</div>
+                <div class="day-header" id="hFri">Piątek</div>
+
+                <div class="time-column" id="timeColumn"></div>
+
+                <div class="day-column" data-day="1"></div>
+                <div class="day-column" data-day="2"></div>
+                <div class="day-column" data-day="3"></div>
+                <div class="day-column" data-day="4"></div>
+                <div class="day-column" data-day="5"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card rise delay2 plan-sidebar">
+          <div class="card-h" style="padding: 16px 16px 0 16px">
+            <h2>Filter</h2>
+            <div class="hint">Przedmiot → forma → grupa | prowadzący</div>
+          </div>
+
+          <div class="inner">
+            <div class="controls">
+              <button class="btn-small" id="btnAllOn" type="button">Zaznacz wszystkie</button>
+              <button class="btn-small" id="btnAllOff" type="button">Odznacz wszystkie</button>
+            </div>
+
+            <ul class="group-filter-list" id="groupList">
+              <li class="muted">Załaduj tydzień aby zobaczyć listę zajęć...</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="toast" id="toast" hidden></div>
+    </main>
+
+    <div id="tooltip"></div>
+
+    <script src="/plan.js" defer></script>
+  </body>
+</html>
